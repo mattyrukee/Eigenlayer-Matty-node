@@ -38,6 +38,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Debug Dockerfile
+        run: |
+         pwd
+         ls -la
+         echo "---- Dockerfile contents ----"
+         cat Dockerfile || echo "Dockerfile not found"
+
+
       # Step 6: Build and load image into Docker local for Trivy and docker save
       - name: Build and load image to Docker local
         uses: docker/build-push-action@v5
