@@ -72,8 +72,8 @@ jobs:
           trivy image \
             --exit-code 1 \
             --severity HIGH,CRITICAL \
-            --ignorefile .trivyignore \
-            ${{ secrets.DOCKERHUB_USERNAME }}/my-fastapi-app:latest
+   #         --ignorefile .trivyignore \
+     #       ${{ secrets.DOCKERHUB_USERNAME }}/my-fastapi-app:latest
 
       # Step 9: Save Docker image as tarball
       - name: Save Docker image as tarball
