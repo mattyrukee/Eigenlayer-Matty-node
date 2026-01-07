@@ -1,0 +1,80 @@
+name: Build, Scan, and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-scan-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout source code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Install Gitleaks (Dynamic, version-safe)
+      - name: Install Gitleaks
+        run: |
+          wget https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_$(wget -qO- https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//')_linux_x64.tar.gz -O gitleaks.tar.gz
+          mkdir gitleaks-bin
+          tar -xzf gitleaks.tar.gz -C gitleaks-bin
+          chmod +x gitleaks-bin/gitleaks
+          sudo mv gitleaks-bin/gitleaks /usr/local/bin/gitleaks
+
+      # Step 3: Run Gitleaks scan
+      - name: Run Gitleaks Scan
+        run: gitleaks detect --source . --verbose
+
+      # Step 4: Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Step 5: Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 6: Build and load image into Docker local for Trivy and docker save
+      - name: Build and load image to Docker local
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/my-fastapi-app:latest
+
+      # Step 7: Install Trivy
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy -y
+
+      # Step 8: Run Trivy scan on Docker image
+      - name: Run Trivy vulnerability scan on Docker image
+        run: trivy image --exit-code 1 --severity HIGH,CRITICAL ${{ secrets.DOCKERHUB_USERNAME }}/my-fastapi-app:latest
+      - name: Run Trivy scan on Docker image (using .trivyignore)
+        run: |
+          trivy image \
+            --exit-code 1 \
+            --severity HIGH,CRITICAL \
+            --ignorefile .trivyignore \
+            ${{ secrets.DOCKERHUB_USERNAME }}/my-fastapi-app:latest
+
+      # Step 9: Save Docker image as tarball
+      - name: Save Docker image as tarball
+        run: docker save -o my-fastapi-app.tar ${{ secrets.DOCKERHUB_USERNAME }}/my-fastapi-app:latest
+
+      # Step 10: Push Docker image (only if scan passes)
+      - name: Push Docker image to Docker Hub
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/my-fastapi-app:latest
